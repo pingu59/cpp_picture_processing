@@ -9,10 +9,12 @@
 
 using namespace std;
 static PicLibrary * pl = new PicLibrary();
+void configure(int argc, char ** argv);
 
 int main(int argc, char ** argv)
 {
   pl->init();
+  configure(argc, argv);
   std::list<thread *> tl;
   int commands = 0;
 
@@ -76,3 +78,10 @@ int main(int argc, char ** argv)
   return 0;
 }
 
+void configure(int argc, char ** argv){
+  for(int i = 1; i < argc; i++){
+    string filepath = argv[i];
+    string basename = filepath.substr(filepath.find_last_of('/')+1);
+    pl->loadpicture(filepath, basename);
+  }
+}
