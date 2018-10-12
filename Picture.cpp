@@ -48,3 +48,4 @@ void Picture::setimage(Mat cpyimg){
     img = imgio.copyimage(cpyimg);
 }
 
+

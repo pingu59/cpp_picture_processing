@@ -3,16 +3,43 @@
 
 #include "Picture.hpp"
 #include "Utils.hpp"
+#include <mutex>
+
+class PicLock{
+public:
+  Picture * pic;
+  PicLock * next;
+  mutex * m;
+  string name;
+};
+
+
+class Position{
+  public:
+    PicLock * curr;
+    PicLock * pred;
+};
 
 class PicLibrary {
 
   private:
   // TODO: define internal picture storage 
+  PicLock * head;
+  PicLock * tail;
 
   public:
   // defaiult constructor/deconstructor
   PicLibrary(){};
   ~PicLibrary(){};
+
+  Position find(string filename);
+  void general_by_row(string filename, Colour (* func)(int, int, Picture*), bool shape,
+                    bool crosspixel);
+  void general_by_row_helper(Picture * pic, Colour (* func)(int, int, Picture*), bool shape,
+                    bool crosspixel);
+  bool valid(PicLock *pred, PicLock * curr);
+  void init();
+  void terminate();
 
   // command-line interpreter routines
   void print_picturestore();
