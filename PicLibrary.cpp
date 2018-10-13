@@ -1,6 +1,7 @@
 #include "PicLibrary.hpp"
 #include "Colour.hpp"
 #include <thread>
+#include <unistd.h>
 #define MAX_COLOUR 255
 
 static Utils u = Utils();
@@ -57,6 +58,7 @@ void PicLibrary::terminate(){
  }
 
   void PicLibrary::print_picturestore(){
+    //cout<<"###liststore" << endl;
     PicLock * pred = head;
     pred -> m->lock();
     pred->next -> m->lock();
@@ -85,6 +87,7 @@ void PicLibrary::terminate(){
 
 
   void PicLibrary::loadpicture(string path, string filename){
+      //cout<<"###load " << filename << path << endl;
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
@@ -109,9 +112,11 @@ void PicLibrary::terminate(){
         }
         p.pred->m->unlock(); p.curr->m->unlock();
       }
+      //cout<<"###load " << filename << path << " finished" << endl;
   }
 
   void PicLibrary::unloadpicture(string filename){
+      //cout<< "###unload " << filename << endl;
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
@@ -119,11 +124,13 @@ void PicLibrary::terminate(){
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
                 p.pred->next = p.curr->next; 
+                delete(p.curr->pic);
                 p.curr ->m->unlock();
                 delete(p.curr->m);
-                delete(p.curr->pic);
                 delete(p.curr); 
                 p.pred->m->unlock(); 
+                unsigned int microseconds = 1;
+                usleep(microseconds);
                 return;
             }else{
                 p.pred->m->unlock(); p.curr->m->unlock();
@@ -138,6 +145,7 @@ void PicLibrary::terminate(){
 
   
   void PicLibrary::savepicture(string filename, string path){
+      //cout<<"###save " << filename << path << endl;
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
@@ -154,10 +162,13 @@ void PicLibrary::terminate(){
         }
         p.pred->m->unlock(); p.curr->m->unlock();
       }
+      //cout<<"###save " << filename << path << "finished" << endl;
   }
 
 
   void PicLibrary::display(string filename){
+      
+      //cout<<"###display " << filename << endl;
       bool ndone = true;
       while(ndone){
         Position p = find(filename);
@@ -174,6 +185,7 @@ void PicLibrary::terminate(){
         }
         p.pred->m->unlock(); p.curr->m->unlock();
       }
+      //cout<<"###display " << filename << " finished"<< endl;
   }
 
  Colour invert_single(int x, int y, Picture * pic){
@@ -249,7 +261,10 @@ void PicLibrary::terminate(){
     }
 
   void PicLibrary::invert(string filename){
+      
+  //cout<<"###invert " << filename << endl;
       general_by_row(filename, &invert_single, false, false);
+      //cout<<"###invert " << filename << " finished"<< endl;
   }
 
   Colour grayscale_single(int x, int y, Picture * pic){
@@ -263,7 +278,10 @@ void PicLibrary::terminate(){
 
 
   void PicLibrary::grayscale(string filename){
+      
+      //cout<<"###grayscale " << filename << endl;
     general_by_row(filename, &grayscale_single, false, false);
+    //cout<<"###grayscale " << filename << " finished"<< endl;
   }
 
   Colour rotate90_single(int x, int y, Picture * pic){
@@ -279,6 +297,8 @@ void PicLibrary::terminate(){
   }
 
   void PicLibrary::rotate(int angle, string filename){
+      
+      //cout<<"###rotate " << filename << endl;
       if(angle == 90){
           general_by_row(filename, &rotate90_single, true, true);
       }else if (angle  == 180){
@@ -286,6 +306,7 @@ void PicLibrary::terminate(){
       }else{
           general_by_row(filename, &rotate270_single, true, true);
       }
+      //cout<<"###rotate " << filename << "finished"<< endl;
   }
 
   Colour FlipV_single(int x, int y, Picture * pic){
@@ -295,6 +316,8 @@ void PicLibrary::terminate(){
     return pic -> getpixel(pic -> getwidth() - x - 1, y);
   }
   void PicLibrary::flipVH(char plane, string filename){
+      
+      //cout<<"###flip " << filename << endl;
       if(plane == 'H'){
           general_by_row(filename, &FlipH_single, false, true);
       }else if(plane == 'V'){
@@ -302,6 +325,7 @@ void PicLibrary::terminate(){
       }else{
           cerr << "False input\n";
       }
+      //cout<<"###flip " << filename << "finished" << endl;
   }
 
   Colour blur_single(int x, int y, Picture * pic){
@@ -326,5 +350,8 @@ void PicLibrary::terminate(){
   }
 
   void PicLibrary::blur(string filename){
+      
+      //cout<<"###blur " << filename << endl;
       general_by_row(filename, &blur_single, false, true);
+      //cout<<"###blur " << filename << "finished" << endl;
   }
