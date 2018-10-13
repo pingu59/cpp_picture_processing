@@ -20,6 +20,8 @@ static void column_thread_func(Picture ptemp,int i,int h, Picture *pic, Colour (
                                 bool crosspixel, bool shape);
 static void sector_thread_func(Picture ptemp,int left,int right, int up, int down, Picture *pic, Colour (* func)(int, int, Picture*),
                                 bool crosspixel, bool shape);
+static void sequential(Picture ptemp,int left,int w, int h, Picture *pic, Colour (* func)(int, int, Picture*),
+                                bool crosspixel, bool shape);
 
 Position PicLibrary::find(string filename){
     PicLock  * curr = head->next;
@@ -269,7 +271,7 @@ void PicLibrary::terminate(){
                         }
                     }
                     break;
-                    default: // pixel by pixel -- dont really want to do it..
+                    default: // pixel by pixel -- sequentially
 
                     break;
                 }
@@ -278,6 +280,7 @@ void PicLibrary::terminate(){
               pic->setimage(ptemp.getimage());
           }
     }
+    
 
   void PicLibrary::general(concurrency_type type, string filename, Colour (* func)(int, int, Picture*), bool shape, bool
                         crosspixel){
@@ -298,6 +301,32 @@ void PicLibrary::terminate(){
         p.pred->m->unlock(); p.curr->m->unlock();
     }
   }
+  static void sequential(Picture ptemp,int left,int w, int h, Picture *pic, Colour (* func)(int, int, Picture*),
+                                bool crosspixel, bool shape){
+                    if(!crosspixel){
+                    for(int i = 0; i < w; i++){
+                        for(int j = 0; j < h; j++){
+                            pic->setpixel(i, j, func(i, j, pic));
+                        }
+                    }
+                  }else{
+                    if(shape){
+                        for(int i = 0; i < w; i++){
+                            for(int j = 0; j < h; j++){
+                                ptemp.setpixel(j, i, func(i, j, pic));
+                            }
+                        }
+                    }else{
+                        for(int i = 0; i < w; i++){
+                            for(int j = 0; j < h; j++){
+                                ptemp.setpixel(i, j, func(i, j, pic));
+                            }
+                        }
+                    }
+                  } 
+            }
+
+
     static void row_thread_func(Picture ptemp,int i,int w, Picture *pic, Colour (* func)(int, int, Picture*),
                                 bool crosspixel, bool shape){
                   if(!crosspixel){
@@ -361,11 +390,10 @@ void PicLibrary::terminate(){
                   }                    
     }
 
-  void PicLibrary::invert(string filename){
-      
-  //cout<<"###invert " << filename << endl;
-      general(SECTOR8, filename, &invert_single, false, false);
-      //cout<<"###invert " << filename << " finished"<< endl;
+  void PicLibrary::invert(string filename){    
+   //cout<<"###invert " << filename << endl;
+       general(PIXEL, filename, &invert_single, false, false);
+       //cout<<"###invert " << filename << " finished"<< endl;
   }
 
   Colour grayscale_single(int x, int y, Picture * pic){
@@ -381,7 +409,7 @@ void PicLibrary::terminate(){
   void PicLibrary::grayscale(string filename){
       
       //cout<<"###grayscale " << filename << endl;
-    general(SECTOR8, filename, &grayscale_single, false, false);
+    general(PIXEL, filename, &grayscale_single, false, false);
     //cout<<"###grayscale " << filename << " finished"<< endl;
   }
 
@@ -401,11 +429,11 @@ void PicLibrary::terminate(){
       
       //cout<<"###rotate " << filename << endl;
       if(angle == 90){
-          general(SECTOR8, filename, &rotate90_single, true, true);
+          general(PIXEL, filename, &rotate90_single, true, true);
       }else if (angle  == 180){
-          general(SECTOR8, filename, &rotate180_single, false, true);
+          general(PIXEL, filename, &rotate180_single, false, true);
       }else{
-          general(SECTOR8,filename, &rotate270_single, true, true);
+          general(PIXEL,filename, &rotate270_single, true, true);
       }
       //cout<<"###rotate " << filename << "finished"<< endl;
   }
@@ -420,9 +448,9 @@ void PicLibrary::terminate(){
       
       //cout<<"###flip " << filename << endl;
       if(plane == 'H'){
-          general(SECTOR8, filename, &FlipH_single, false, true);
+          general(PIXEL, filename, &FlipH_single, false, true);
       }else if(plane == 'V'){
-          general(SECTOR8,filename, &FlipV_single, false, true);
+          general(PIXEL,filename, &FlipV_single, false, true);
       }else{
           cerr << "False input\n";
       }
@@ -453,6 +481,6 @@ void PicLibrary::terminate(){
   void PicLibrary::blur(string filename){
       
       //cout<<"###blur " << filename << endl;
-      general(SECTOR8,filename, &blur_single, false, true);
+      general(SECTOR4,filename, &blur_single, false, true);
       //cout<<"###blur " << filename << "finished" << endl;
   }
