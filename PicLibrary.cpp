@@ -16,6 +16,7 @@ Colour rotate270_single(int x, int y, Picture * pic);
 static void thread_func(Picture ptemp,int i,int w,Picture * pic, Colour (* func)(int, int, Picture*),
                                 bool crosspixel, bool shape);
 
+
 Position PicLibrary::find(string filename){
     PicLock  * curr = head->next;
     PicLock  * pred = head;
@@ -58,16 +59,15 @@ void PicLibrary::terminate(){
   void PicLibrary::print_picturestore(){
     PicLock * pred = head;
     pred -> m->lock();
-    head->next -> m->lock();
-    PicLock * curr = head->next;
+    pred->next -> m->lock();
+    PicLock * curr = pred->next;
     while(curr -> name != "\n"){
         cout << curr -> name << endl;
+        curr -> next -> m->lock();
         pred -> m->unlock();
         pred = curr;
         curr = curr -> next;
-        curr -> m->lock();
     }
-
     pred -> m->unlock();
     curr -> m->unlock();
   }
@@ -88,22 +88,26 @@ void PicLibrary::terminate(){
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
-        p.curr->m->lock(); p.pred->m->lock();
+        p.pred->m->lock(); p.curr->m->lock();
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
+                p.pred->m->unlock(); p.curr->m->unlock();
                 cerr << "FAILED : Picture of the same name already exists.\n";
                 return;
             }
             Picture * pic = new Picture(path);
-            PicLock * pl = new PicLock();
-            pl->next = p.curr;
-            pl->m = new std::mutex();
-            pl->name = filename;
-            pl->pic = pic;
-            p.pred->next = pl;
+            if(!pic -> getimage().empty()){
+            //cout << pic -> getimage()<< "!!"<<endl;
+                PicLock * pl = new PicLock();
+                pl->next = p.curr;
+                pl->m = new std::mutex();
+                pl->name = filename;
+                pl->pic = pic;
+                p.pred->next = pl;
+            }
             ndone = false;
         }
-        p.curr->m->unlock(); p.pred->m->unlock();
+        p.pred->m->unlock(); p.curr->m->unlock();
       }
   }
 
@@ -111,21 +115,25 @@ void PicLibrary::terminate(){
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
-        p.curr->m->lock(); p.pred ->m->lock();
+        p.pred->m->lock(); p.curr ->m->lock();
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
+                p.pred->next = p.curr->next; 
+                p.curr ->m->unlock();
                 delete(p.curr->m);
                 delete(p.curr->pic);
-                p.pred->next = p.curr->next;  
                 delete(p.curr); 
+                p.pred->m->unlock(); 
+                return;
             }else{
+                p.pred->m->unlock(); p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.curr->m->unlock(); p.pred->m->unlock();
-      }
+        p.pred->m->unlock(); p.curr->m->unlock();
+    }
   }
 
   
@@ -133,18 +141,18 @@ void PicLibrary::terminate(){
       bool ndone = true;
       while(ndone){
         Position p= find(filename);
-        p.curr ->m->lock(); p.pred->m->lock();
+        p.pred->m->lock(); p.curr->m->lock();
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
-                //path + '/' + 
                 u.saveimage(p.curr->pic->getimage(), path);
             }else{
+                p.pred->m->unlock(); p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.curr->m->unlock(); p.pred->m->unlock();
+        p.pred->m->unlock(); p.curr->m->unlock();
       }
   }
 
@@ -153,17 +161,18 @@ void PicLibrary::terminate(){
       bool ndone = true;
       while(ndone){
         Position p = find(filename);
-        p.curr->m->lock(); p.pred->m->lock();
+        p.pred->m->lock(); p.curr->m->lock();
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
                 u.displayimage(p.curr->pic->getimage());
             }else{
+                p.pred->m->unlock(); p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.curr->m->unlock(); p.pred->m->unlock();
+        p.pred->m->unlock(); p.curr->m->unlock();
       }
   }
 
@@ -206,17 +215,18 @@ void PicLibrary::terminate(){
     bool ndone = true;
     while(ndone){
         Position p = find(filename);
-        p.curr->m->lock(); p.pred->m->lock();
+        p.pred->m->lock(); p.curr->m->lock();
         if(valid(p.pred, p.curr)){
             if(p.curr->name == filename){
                 general_by_row_helper(p.curr->pic, func, shape, crosspixel);
             }else{
+                p.pred->m->unlock(); p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.curr->m->unlock(); p.pred ->m->unlock();
+        p.pred->m->unlock(); p.curr->m->unlock();
     }
   }
     static void thread_func(Picture ptemp,int i,int w, Picture *pic, Colour (* func)(int, int, Picture*),

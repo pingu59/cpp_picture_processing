@@ -4,6 +4,7 @@
 #include "Picture.hpp"
 #include "Utils.hpp"
 #include <mutex>
+#include <thread>
 
 class PicLock{
 public:
@@ -31,6 +32,7 @@ class PicLibrary {
   // defaiult constructor/deconstructor
   PicLibrary(){};
   ~PicLibrary(){};
+
 
   Position find(string filename);
   void general_by_row(string filename, Colour (* func)(int, int, Picture*), bool shape,
