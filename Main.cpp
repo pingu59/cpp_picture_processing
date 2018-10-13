@@ -22,7 +22,7 @@ int main(int argc, char ** argv)
   bool no_th;
   while(! terminate){
     std::thread * th;
-    cout << ">>";
+    cout<< "<<";
     cin >> c1;
     no_th = false;
     string name = "\n";

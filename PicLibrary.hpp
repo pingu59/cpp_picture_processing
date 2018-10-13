@@ -14,6 +14,10 @@ public:
   string name;
 };
 
+enum concurrency_type{
+    ROW, COLUMN, SECTOR2, SECTOR4, SECTOR8, PIXEL
+};
+
 
 class Position{
   public:
@@ -35,9 +39,9 @@ class PicLibrary {
 
 
   Position find(string filename);
-  void general_by_row(string filename, Colour (* func)(int, int, Picture*), bool shape,
+  void general(enum concurrency_type, string filename, Colour (* func)(int, int, Picture*), bool shape,
                     bool crosspixel);
-  void general_by_row_helper(Picture * pic, Colour (* func)(int, int, Picture*), bool shape,
+  void general_helper(concurrency_type type, Picture * pic, Colour (* func)(int, int, Picture*), bool shape,
                     bool crosspixel);
   bool valid(PicLock *pred, PicLock * curr);
   void init();
