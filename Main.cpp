@@ -24,6 +24,9 @@ int main(int argc, char **argv)
   {
     std::thread *th;
     cout << ">>";
+    if(cin.eof()){
+      break;
+    }
     cin >> c1;
     no_th = false;
     string name = "\n";
