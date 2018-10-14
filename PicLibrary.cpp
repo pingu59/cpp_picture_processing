@@ -2,33 +2,39 @@
 #include "Colour.hpp"
 #include <thread>
 #include <unistd.h>
+#include <time.h>
 #define MAX_COLOUR 255
 
 static Utils u = Utils();
 
-Colour invert_single(int x, int y, Picture * pic);
-Colour grayscale_single(int x, int y, Picture * pic);
-Colour FlipV_single(int x, int y, Picture * pic);
-Colour FlipH_single(int x, int y, Picture * pic);
-Colour blur_single(int x, int y, Picture * pic);
-Colour rotate90_single(int x, int y, Picture * pic);
-Colour rotate180_single(int x, int y, Picture * pic);
-Colour rotate270_single(int x, int y, Picture * pic);
-static void row_thread_func(Picture ptemp,int i,int w,Picture * pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape);
-static void column_thread_func(Picture ptemp,int i,int h, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape);
-static void sector_thread_func(Picture ptemp,int left,int right, int up, int down, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape);
-static void sequential(Picture ptemp,int left,int w, int h, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape);
+Colour invert_single(int x, int y, Picture *pic);
+Colour grayscale_single(int x, int y, Picture *pic);
+Colour FlipV_single(int x, int y, Picture *pic);
+Colour FlipH_single(int x, int y, Picture *pic);
+Colour blur_single(int x, int y, Picture *pic);
+Colour rotate90_single(int x, int y, Picture *pic);
+Colour rotate180_single(int x, int y, Picture *pic);
+Colour rotate270_single(int x, int y, Picture *pic);
+static void row_thread_func(Picture ptemp, int i, int w, Picture *pic, Colour (*func)(int, int, Picture *),
+                            bool crosspixel, bool shape);
+static void pixel_thread_func(Picture ptemp, int i, int j, Picture *pic, Colour (*func)(int, int, Picture *),
+                              bool crosspixel, bool shape);
+static void column_thread_func(Picture ptemp, int i, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+                               bool crosspixel, bool shape);
+static void sector_thread_func(Picture ptemp, int left, int right, int up, int down, Picture *pic, Colour (*func)(int, int, Picture *),
+                               bool crosspixel, bool shape);
+static void sequential(Picture ptemp,int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+                       bool crosspixel, bool shape);
 
-Position PicLibrary::find(string filename){
-    PicLock  * curr = head->next;
-    PicLock  * pred = head;
+Position PicLibrary::find(string filename)
+{
+    PicLock *curr = head->next;
+    PicLock *pred = head;
     Position p = Position();
-    while(curr->name != "\n"){
-        if(curr->name >= filename){
+    while (curr->name != "\n")
+    {
+        if (curr->name >= filename)
+        {
             p.curr = curr;
             p.pred = pred;
             return p;
@@ -41,72 +47,82 @@ Position PicLibrary::find(string filename){
     return p;
 }
 
-void PicLibrary::init(){
-  head = new PicLock();
-  tail = new PicLock();
+void PicLibrary::init()
+{
+    head = new PicLock();
+    tail = new PicLock();
 
-  head->m = new std::mutex();
-  tail->m = new std::mutex();
+    head->m = new std::mutex();
+    tail->m = new std::mutex();
 
-  head->name = "\n";
-  tail->name = "\n";  //implicitly set to this since there will never be name as this
-  head->next = tail;
+    head->name = "\n";
+    tail->name = "\n"; //implicitly set to this since there will never be name as this
+    head->next = tail;
 }
 
-void PicLibrary::terminate(){
-    delete(head -> m);
-    delete(tail -> m);
-    delete(head -> pic);
-    delete(tail -> pic);
-    delete(head);
-    delete(tail);
- }
+void PicLibrary::terminate()
+{
+    delete (head->m);
+    delete (tail->m);
+    delete (head->pic);
+    delete (tail->pic);
+    delete (head);
+    delete (tail);
+}
 
-  void PicLibrary::print_picturestore(){
-    //cout<<"###liststore" << endl;
-    PicLock * pred = head;
-    pred -> m->lock();
-    pred->next -> m->lock();
-    PicLock * curr = pred->next;
-    while(curr -> name != "\n"){
-        cout << curr -> name << endl;
-        curr -> next -> m->lock();
-        pred -> m->unlock();
+void PicLibrary::print_picturestore()
+{
+    PicLock *pred = head;
+    pred->m->lock();
+    pred->next->m->lock();
+    PicLock *curr = pred->next;
+    while (curr->name != "\n")
+    {
+        cout << curr->name << endl;
+        curr->next->m->lock();
+        pred->m->unlock();
         pred = curr;
-        curr = curr -> next;
+        curr = curr->next;
     }
-    pred -> m->unlock();
-    curr -> m->unlock();
-  }
+    pred->m->unlock();
+    curr->m->unlock();
+}
 
-  bool PicLibrary::valid(PicLock *pred, PicLock *curr){
-      PicLock * pl = head;
-      while(pl-> name <= pred->name){
-          if(pl -> name == pred->name){
-              return pl -> next -> name == curr->name;
-          }
-          pl = pl -> next;
-      }
-      return false;
-  }
+bool PicLibrary::valid(PicLock *pred, PicLock *curr)
+{
+    PicLock *pl = head;
+    while (pl->name <= pred->name)
+    {
+        if (pl->name == pred->name)
+        {
+            return pl->next->name == curr->name;
+        }
+        pl = pl->next;
+    }
+    return false;
+}
 
-
-  void PicLibrary::loadpicture(string path, string filename){
-      //cout<<"###load " << filename << path << endl;
-      bool ndone = true;
-      while(ndone){
-        Position p= find(filename);
-        p.pred->m->lock(); p.curr->m->lock();
-        if(valid(p.pred, p.curr)){
-            if(p.curr->name == filename){
-                p.pred->m->unlock(); p.curr->m->unlock();
+void PicLibrary::loadpicture(string path, string filename)
+{
+    bool ndone = true;
+    while (ndone)
+    {
+        Position p = find(filename);
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            if (p.curr->name == filename)
+            {
+                p.pred->m->unlock();
+                p.curr->m->unlock();
                 cerr << "FAILED : Picture of the same name already exists.\n";
                 return;
             }
-            Picture * pic = new Picture(path);
-            if(!pic -> getimage().empty()){
-            //cout << pic -> getimage()<< "!!"<<endl;
-                PicLock * pl = new PicLock();
+            Picture *pic = new Picture(path);
+            if (!pic->getimage().empty())
+            {
+                PicLock *pl = new PicLock();
                 pl->next = p.curr;
                 pl->m = new std::mutex();
                 pl->name = filename;
@@ -115,372 +131,525 @@ void PicLibrary::terminate(){
             }
             ndone = false;
         }
-        p.pred->m->unlock(); p.curr->m->unlock();
-      }
-      //cout<<"###load " << filename << path << " finished" << endl;
-  }
+        p.pred->m->unlock();
+        p.curr->m->unlock();
+    }
+}
 
-  void PicLibrary::unloadpicture(string filename){
-      //cout<< "###unload " << filename << endl;
-      bool ndone = true;
-      while(ndone){
-        Position p= find(filename);
-        p.pred->m->lock(); p.curr ->m->lock();
-        if(valid(p.pred, p.curr)){
-            if(p.curr->name == filename){
-                p.pred->next = p.curr->next; 
-                delete(p.curr->pic);
-                p.curr ->m->unlock();
-                delete(p.curr->m);
-                delete(p.curr); 
-                p.pred->m->unlock(); 
+void PicLibrary::unloadpicture(string filename)
+{
+    bool ndone = true;
+    while (ndone)
+    {
+        Position p = find(filename);
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            if (p.curr->name == filename)
+            {
+                p.pred->next = p.curr->next;
+                delete (p.curr->pic);
+                p.curr->m->unlock();
+                delete (p.curr->m);
+                delete (p.curr);
+                p.pred->m->unlock();
                 usleep(1);
                 return;
-            }else{
-                p.pred->m->unlock(); p.curr->m->unlock();
+            }
+            else
+            {
+                p.pred->m->unlock();
+                p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.pred->m->unlock(); p.curr->m->unlock();
+        p.pred->m->unlock();
+        p.curr->m->unlock();
     }
-  }
+}
 
-  
-  void PicLibrary::savepicture(string filename, string path){
-      //cout<<"###save " << filename << path << endl;
-      bool ndone = true;
-      while(ndone){
-        Position p= find(filename);
-        p.pred->m->lock(); p.curr->m->lock();
-        if(valid(p.pred, p.curr)){
-            if(p.curr->name == filename){
-                u.saveimage(p.curr->pic->getimage(), path);
-            }else{
-                p.pred->m->unlock(); p.curr->m->unlock();
-                cerr << "FAILED : Picture not found.\n";
-                return;
-            }
-            ndone = false;
-        }
-        p.pred->m->unlock(); p.curr->m->unlock();
-      }
-      //cout<<"###save " << filename << path << "finished" << endl;
-  }
-
-
-  void PicLibrary::display(string filename){
-      
-      //cout<<"###display " << filename << endl;
-      bool ndone = true;
-      while(ndone){
+void PicLibrary::savepicture(string filename, string path)
+{
+    bool ndone = true;
+    while (ndone)
+    {
         Position p = find(filename);
-        p.pred->m->lock(); p.curr->m->lock();
-        if(valid(p.pred, p.curr)){
-            if(p.curr->name == filename){
-                u.displayimage(p.curr->pic->getimage());
-            }else{
-                p.pred->m->unlock(); p.curr->m->unlock();
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            if (p.curr->name == filename)
+            {
+                u.saveimage(p.curr->pic->getimage(), path);
+            }
+            else
+            {
+                p.pred->m->unlock();
+                p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.pred->m->unlock(); p.curr->m->unlock();
-      }
-      //cout<<"###display " << filename << " finished"<< endl;
-  }
+        p.pred->m->unlock();
+        p.curr->m->unlock();
+    }
+}
 
- Colour invert_single(int x, int y, Picture * pic){
-    Colour thisc = pic -> getpixel(x, y);
+void PicLibrary::display(string filename)
+{
+
+    bool ndone = true;
+    while (ndone)
+    {
+        Position p = find(filename);
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            if (p.curr->name == filename)
+            {
+                u.displayimage(p.curr->pic->getimage());
+            }
+            else
+            {
+                p.pred->m->unlock();
+                p.curr->m->unlock();
+                cerr << "FAILED : Picture not found.\n";
+                return;
+            }
+            ndone = false;
+        }
+        p.pred->m->unlock();
+        p.curr->m->unlock();
+    }
+}
+
+Colour invert_single(int x, int y, Picture *pic)
+{
+    Colour thisc = pic->getpixel(x, y);
     thisc.setred(MAX_COLOUR - thisc.getred());
     thisc.setblue(MAX_COLOUR - thisc.getblue());
     thisc.setgreen(MAX_COLOUR - thisc.getgreen());
     return thisc;
-  }
+}
 
-  void PicLibrary::general_helper(concurrency_type type, Picture * pic, Colour (* func)(int, int, Picture *), bool shape,
-                    bool crosspixel){
+void PicLibrary::general_helper(concurrency_type type, Picture *pic, Colour (*func)(int, int, Picture *), bool shape,
+                                bool crosspixel)
+{
     Picture ptemp;
     int w = pic->getwidth();
     int h = pic->getheight();
-          if(crosspixel){
-            if(shape){
-                ptemp = Picture(h, w);
-            }else{
-                ptemp = Picture(w, h);
-            }
-          }
-            switch(type){
-                    case ROW:{
-                        thread th[h];
-                        for(int i = 0; i < h; i ++){
-                            th[i] = thread(&row_thread_func, ptemp, i, w, pic, func, crosspixel, shape);
-                        }
-                            
-                        for(int i = 0; i < h; i ++){
-                            th[i].join();
-                        }
-                    }
-
-                    break;
-                    case COLUMN:{
-                        thread th[w];
-                        for(int i = 0; i < w; i ++){
-                            th[i] = thread(&column_thread_func, ptemp, i, h, pic, func, crosspixel, shape);
-                        }
-                            
-                        for(int i = 0; i < w; i ++){
-                            th[i].join();
-                        }
-                    }
-
-                    break;
-                    case SECTOR2:{
-                        int midH = w/2;
-                        thread t1 = thread(&sector_thread_func, ptemp, 0, midH, h, 0, pic, func, crosspixel, shape);
-                        thread t2 = thread(&sector_thread_func, ptemp, midH, w, h, 0, pic, func, crosspixel, shape);
-                        t1.join();
-                        t2.join();
-                    }
-                    break;
-                    case SECTOR4:{
-                        int midV = h/2;
-                        int midH = w/2;
-                        thread t1 = thread(&sector_thread_func, ptemp, 0, midH, midV, 0, pic, func, crosspixel, shape);
-                        thread t2 = thread(&sector_thread_func, ptemp, midH, w, h, midV, pic, func, crosspixel, shape);
-                        thread t3 = thread(&sector_thread_func, ptemp, 0, midH, midV, 0, pic, func, crosspixel, shape);
-                        thread t4 = thread(&sector_thread_func, ptemp, midH, w, h, midV, pic, func, crosspixel, shape);
-                        t1.join();
-                        t2.join();
-                        t3.join();
-                        t4.join();
-                    }
-
-                    break;
-                    case SECTOR8:{
-                        int oneeighthH = w/8;
-                        thread th[8];
-                        for(int i = 0; i < 7; i++){
-                            th[i] = thread(&sector_thread_func, ptemp, i * oneeighthH, (i + 1) * oneeighthH, h, 0, pic, func, crosspixel, shape);
-                        }
-                        th[7] = thread(&sector_thread_func, ptemp, 7 * oneeighthH, w, h, 0, pic, func, crosspixel, shape);
-                        for(int i = 0; i < 8; i++){
-                            th[i].join();
-                        }
-                    }
-                    break;
-                    default: // pixel by pixel -- sequentially
-
-                    break;
-                }
-          
-          if(crosspixel){
-              pic->setimage(ptemp.getimage());
-          }
+    if (crosspixel)
+    {
+        if (shape)
+        {
+            ptemp = Picture(h, w);
+        }
+        else
+        {
+            ptemp = Picture(w, h);
+        }
     }
-    
+    switch (type)
+    {
+    case ROW:
+    {
+        thread th[h];
+        for (int i = 0; i < h; i++)
+        {
+            th[i] = thread(&row_thread_func, ptemp, i, w, pic, func, crosspixel, shape);
+        }
 
-  void PicLibrary::general(concurrency_type type, string filename, Colour (* func)(int, int, Picture*), bool shape, bool
-                        crosspixel){
+        for (int i = 0; i < h; i++)
+        {
+            th[i].join();
+        }
+    }
+
+    break;
+    case COLUMN:
+    {
+        thread th[w];
+        for (int i = 0; i < w; i++)
+        {
+            th[i] = thread(&column_thread_func, ptemp, i, h, pic, func, crosspixel, shape);
+        }
+
+        for (int i = 0; i < w; i++)
+        {
+            th[i].join();
+        }
+    }
+
+    break;
+    case SECTOR2:
+    {
+        int midH = w / 2;
+        thread t1 = thread(&sector_thread_func, ptemp, 0, midH, h, 0, pic, func, crosspixel, shape);
+        thread t2 = thread(&sector_thread_func, ptemp, midH, w, h, 0, pic, func, crosspixel, shape);
+        t1.join();
+        t2.join();
+    }
+    break;
+    case SECTOR4:
+    {
+        int midV = h / 2;
+        int midH = w / 2;
+        thread t1 = thread(&sector_thread_func, ptemp, 0, midH, midV, 0, pic, func, crosspixel, shape);
+        thread t2 = thread(&sector_thread_func, ptemp, midH, w, h, midV, pic, func, crosspixel, shape);
+        thread t3 = thread(&sector_thread_func, ptemp, 0, midH, h, midV, pic, func, crosspixel, shape);
+        thread t4 = thread(&sector_thread_func, ptemp, midH, w, midV, 0, pic, func, crosspixel, shape);
+        t1.join();
+        t2.join();
+        t3.join();
+        t4.join();
+    }
+
+    break;
+    case SECTOR8:
+    {
+        int oneeighthH = w / 8;
+        thread th[8];
+        for (int i = 0; i < 7; i++)
+        {
+            th[i] = thread(&sector_thread_func, ptemp, i * oneeighthH, (i + 1) * oneeighthH, h, 0, pic, func, crosspixel, shape);
+        }
+        th[7] = thread(&sector_thread_func, ptemp, 7 * oneeighthH, w, h, 0, pic, func, crosspixel, shape);
+        for (int i = 0; i < 8; i++)
+        {
+            th[i].join();
+        }
+    }
+    break;
+    case PIXEL:
+    {
+        thread th[w][h];
+        for (int i = 0; i < w; i++)
+        {
+            for (int j = 0; j < h; j++)
+            {
+                th[i][j] = thread(&pixel_thread_func, ptemp, i, j, pic, func, crosspixel, shape);
+            }
+        }
+        for (int i = 0; i < w; i++)
+        {
+            for (int j = 0; j < h; j++)
+            {
+                th[i][j].join();
+            }
+        }
+    }
+    break;
+    default: //sequentially
+        sequential(ptemp,w, h, pic, func, crosspixel, shape);
+        break;
+    }
+
+    if (crosspixel)
+    {
+        pic->setimage(ptemp.getimage());
+    }
+}
+
+static void pixel_thread_func(Picture ptemp, int i, int j, Picture *pic, Colour (*func)(int, int, Picture *),
+                              bool crosspixel, bool shape)
+{
+    if (!crosspixel)
+    {
+        pic->setpixel(i, j, func(i, j, pic));
+    }
+    else
+    {
+        if (shape)
+        {
+
+            ptemp.setpixel(j, i, func(i, j, pic));
+        }
+        else
+        {
+
+            ptemp.setpixel(i, j, func(i, j, pic));
+        }
+    }
+}
+
+void PicLibrary::general(concurrency_type type, string filename, Colour (*func)(int, int, Picture *), bool shape, bool crosspixel)
+{
     bool ndone = true;
-    while(ndone){
+    while (ndone)
+    {
         Position p = find(filename);
-        p.pred->m->lock(); p.curr->m->lock();
-        if(valid(p.pred, p.curr)){
-            if(p.curr->name == filename){
-             general_helper(type, p.curr->pic, func, shape, crosspixel);
-            }else{
-                p.pred->m->unlock(); p.curr->m->unlock();
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            if (p.curr->name == filename)
+            {
+                struct timespec * tp = (struct timespec *)malloc(sizeof(struct timespec));
+                clock_gettime(CLOCK_MONOTONIC, tp);
+
+                general_helper(type, p.curr->pic, func, shape, crosspixel);
+
+                struct timespec * tp2 = (struct timespec *)malloc(sizeof(struct timespec));
+                clock_gettime(CLOCK_MONOTONIC, tp2);
+                long long difference = (tp2 -> tv_sec * 1000000000 + tp2 -> tv_nsec) 
+                                        - (tp -> tv_sec * 1000000000 + tp -> tv_nsec);
+                cout << "Execution time is: " << difference << endl;
+                free(tp);
+                free(tp2);
+            }
+            else
+            {
+                p.pred->m->unlock();
+                p.curr->m->unlock();
                 cerr << "FAILED : Picture not found.\n";
                 return;
             }
             ndone = false;
         }
-        p.pred->m->unlock(); p.curr->m->unlock();
+        p.pred->m->unlock();
+        p.curr->m->unlock();
     }
-  }
-  static void sequential(Picture ptemp,int left,int w, int h, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape){
-                    if(!crosspixel){
-                    for(int i = 0; i < w; i++){
-                        for(int j = 0; j < h; j++){
-                            pic->setpixel(i, j, func(i, j, pic));
-                        }
-                    }
-                  }else{
-                    if(shape){
-                        for(int i = 0; i < w; i++){
-                            for(int j = 0; j < h; j++){
-                                ptemp.setpixel(j, i, func(i, j, pic));
-                            }
-                        }
-                    }else{
-                        for(int i = 0; i < w; i++){
-                            for(int j = 0; j < h; j++){
-                                ptemp.setpixel(i, j, func(i, j, pic));
-                            }
-                        }
-                    }
-                  } 
+}
+static void sequential(Picture ptemp,int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+                       bool crosspixel, bool shape)
+{
+    if (!crosspixel)
+    {
+        for (int i = 0; i < w; i++)
+        {
+            for (int j = 0; j < h; j++)
+            {
+                pic->setpixel(i, j, func(i, j, pic));
             }
-
-
-    static void row_thread_func(Picture ptemp,int i,int w, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape){
-                  if(!crosspixel){
-                    for(int j = 0; j < w; j++){
-                        pic->setpixel(j, i, func(j, i, pic));
-                    }
-                  }else{
-                    if(shape){
-                        for(int j = 0; j < w; j++){
-                            ptemp.setpixel(i, j, func(j, i, pic));
-                        }
-                    }else{
-                        for(int j = 0; j < w; j++){
-                            ptemp.setpixel(j, i, func(j, i, pic));
-                        }
-                    }
-                  }                    
+        }
     }
-
-    static void column_thread_func(Picture ptemp,int i,int h, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape){
-                  if(!crosspixel){
-                    for(int j = 0; j < h; j++){
-                        pic->setpixel(i, j, func(i, j, pic));
-                    }
-                  }else{
-                    if(shape){
-                        for(int j = 0; j < h; j++){
-                            ptemp.setpixel(j, i, func(i, j, pic));
-                        }
-                    }else{
-                        for(int j = 0; j < h; j++){
-                            ptemp.setpixel(i, j, func(i, j, pic));
-                        }
-                    }
-                  }                    
+    else
+    {
+        if (shape)
+        {
+            for (int i = 0; i < w; i++)
+            {
+                for (int j = 0; j < h; j++)
+                {
+                    ptemp.setpixel(j, i, func(i, j, pic));
+                }
+            }
+        }
+        else
+        {
+            for (int i = 0; i < w; i++)
+            {
+                for (int j = 0; j < h; j++)
+                {
+                    ptemp.setpixel(i, j, func(i, j, pic));
+                }
+            }
+        }
     }
+}
 
-    static void sector_thread_func(Picture ptemp,int left,int right, int up, int down, Picture *pic, Colour (* func)(int, int, Picture*),
-                                bool crosspixel, bool shape){
-                  if(!crosspixel){
-                    for(int i = left; i < right; i++){
-                        for(int j = down; j < up; j++){
-                            pic->setpixel(i, j, func(i, j, pic));
-                        }
-                    }
-                  }else{
-                    if(shape){
-                        for(int i = left; i < right; i++){
-                            for(int j = down; j < up; j++){
-                                ptemp.setpixel(j, i, func(i, j, pic));
-                            }
-                        }
-                    }else{
-                        for(int i = left; i < right; i++){
-                            for(int j = down; j < up; j++){
-                                ptemp.setpixel(i, j, func(i, j, pic));
-                            }
-                        }
-                    }
-                  }                    
+static void row_thread_func(Picture ptemp, int i, int w, Picture *pic, Colour (*func)(int, int, Picture *),
+                            bool crosspixel, bool shape)
+{
+    if (!crosspixel)
+    {
+        for (int j = 0; j < w; j++)
+        {
+            pic->setpixel(j, i, func(j, i, pic));
+        }
     }
+    else
+    {
+        if (shape)
+        {
+            for (int j = 0; j < w; j++)
+            {
+                ptemp.setpixel(i, j, func(j, i, pic));
+            }
+        }
+        else
+        {
+            for (int j = 0; j < w; j++)
+            {
+                ptemp.setpixel(j, i, func(j, i, pic));
+            }
+        }
+    }
+}
 
-  void PicLibrary::invert(string filename){    
-   //cout<<"###invert " << filename << endl;
-       general(PIXEL, filename, &invert_single, false, false);
-       //cout<<"###invert " << filename << " finished"<< endl;
-  }
+static void column_thread_func(Picture ptemp, int i, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+                               bool crosspixel, bool shape)
+{
+    if (!crosspixel)
+    {
+        for (int j = 0; j < h; j++)
+        {
+            pic->setpixel(i, j, func(i, j, pic));
+        }
+    }
+    else
+    {
+        if (shape)
+        {
+            for (int j = 0; j < h; j++)
+            {
+                ptemp.setpixel(j, i, func(i, j, pic));
+            }
+        }
+        else
+        {
+            for (int j = 0; j < h; j++)
+            {
+                ptemp.setpixel(i, j, func(i, j, pic));
+            }
+        }
+    }
+}
 
-  Colour grayscale_single(int x, int y, Picture * pic){
-    Colour thisc = pic -> getpixel(x, y);
-    int avg  = (thisc.getred() + thisc.getblue() + thisc.getgreen())/3;
+static void sector_thread_func(Picture ptemp, int left, int right, int up, int down, Picture *pic, Colour (*func)(int, int, Picture *),
+                               bool crosspixel, bool shape)
+{
+    if (!crosspixel)
+    {
+        for (int i = left; i < right; i++)
+        {
+            for (int j = down; j < up; j++)
+            {
+                pic->setpixel(i, j, func(i, j, pic));
+            }
+        }
+    }
+    else
+    {
+        if (shape)
+        {
+            for (int i = left; i < right; i++)
+            {
+                for (int j = down; j < up; j++)
+                {
+                    ptemp.setpixel(j, i, func(i, j, pic));
+                }
+            }
+        }
+        else
+        {
+            for (int i = left; i < right; i++)
+            {
+                for (int j = down; j < up; j++)
+                {
+                    ptemp.setpixel(i, j, func(i, j, pic));
+                }
+            }
+        }
+    }
+}
+
+void PicLibrary::invert(string filename)
+{
+    general(SEQUENTIAL, filename, &invert_single, false, false);
+}
+
+Colour grayscale_single(int x, int y, Picture *pic)
+{
+    Colour thisc = pic->getpixel(x, y);
+    int avg = (thisc.getred() + thisc.getblue() + thisc.getgreen()) / 3;
     thisc.setred(avg);
     thisc.setblue(avg);
     thisc.setgreen(avg);
     return thisc;
-  }
+}
 
+void PicLibrary::grayscale(string filename)
+{
+    general(SEQUENTIAL, filename, &grayscale_single, false, false);
+}
 
-  void PicLibrary::grayscale(string filename){
-      
-      //cout<<"###grayscale " << filename << endl;
-    general(PIXEL, filename, &grayscale_single, false, false);
-    //cout<<"###grayscale " << filename << " finished"<< endl;
-  }
+Colour rotate90_single(int x, int y, Picture *pic)
+{
+    return pic->getpixel(x, pic->getheight() - y - 1);
+}
 
-  Colour rotate90_single(int x, int y, Picture * pic){
-      return pic -> getpixel(x, pic -> getheight() - y - 1);
-  }
+Colour rotate180_single(int x, int y, Picture *pic)
+{
+    return pic->getpixel(pic->getwidth() - x - 1, pic->getheight() - y - 1);
+}
 
-  Colour rotate180_single(int x, int y, Picture * pic){
-      return pic -> getpixel(pic -> getwidth() - x - 1, pic -> getheight() - y - 1);
-  }
+Colour rotate270_single(int x, int y, Picture *pic)
+{
+    return pic->getpixel(pic->getwidth() - x - 1, y);
+}
 
-  Colour rotate270_single(int x, int y, Picture * pic){
-      return pic -> getpixel(pic -> getwidth() - x - 1, y);
-  }
+void PicLibrary::rotate(int angle, string filename)
+{
+    if (angle == 90)
+    {
+        general(SEQUENTIAL, filename, &rotate90_single, true, true);
+    }
+    else if (angle == 180)
+    {
+        general(SEQUENTIAL, filename, &rotate180_single, false, true);
+    }
+    else
+    {
+        general(SEQUENTIAL, filename, &rotate270_single, true, true);
+    }
+}
 
-  void PicLibrary::rotate(int angle, string filename){
-      
-      //cout<<"###rotate " << filename << endl;
-      if(angle == 90){
-          general(PIXEL, filename, &rotate90_single, true, true);
-      }else if (angle  == 180){
-          general(PIXEL, filename, &rotate180_single, false, true);
-      }else{
-          general(PIXEL,filename, &rotate270_single, true, true);
-      }
-      //cout<<"###rotate " << filename << "finished"<< endl;
-  }
+Colour FlipV_single(int x, int y, Picture *pic)
+{
+    return pic->getpixel(x, pic->getheight() - y - 1);
+}
+Colour FlipH_single(int x, int y, Picture *pic)
+{
+    return pic->getpixel(pic->getwidth() - x - 1, y);
+}
+void PicLibrary::flipVH(char plane, string filename)
+{
+    if (plane == 'H')
+    {
+        general(SEQUENTIAL, filename, &FlipH_single, false, true);
+    }
+    else if (plane == 'V')
+    {
+        general(SEQUENTIAL, filename, &FlipV_single, false, true);
+    }
+    else
+    {
+        cerr << "False input\n";
+    }
+}
 
-  Colour FlipV_single(int x, int y, Picture * pic){
-    return pic -> getpixel(x, pic -> getheight() - y - 1);
-  }
-  Colour FlipH_single(int x, int y, Picture * pic){
-    return pic -> getpixel(pic -> getwidth() - x - 1, y);
-  }
-  void PicLibrary::flipVH(char plane, string filename){
-      
-      //cout<<"###flip " << filename << endl;
-      if(plane == 'H'){
-          general(PIXEL, filename, &FlipH_single, false, true);
-      }else if(plane == 'V'){
-          general(PIXEL,filename, &FlipV_single, false, true);
-      }else{
-          cerr << "False input\n";
-      }
-      //cout<<"###flip " << filename << "finished" << endl;
-  }
-
-  Colour blur_single(int x, int y, Picture * pic){
-      Colour thisc = pic -> getpixel(x, y);
-      if ( x != 0 && y != 0 && y  < pic -> getheight() - 1 && x < pic -> getwidth() - 1){
-          int accr = 0;
-          int accg = 0;
-          int accb = 0;
-          for(int i = -1; i < 2; i++){
-              for(int j = -1; j < 2; j++){
-                  Colour c = pic -> getpixel(x + i, y + j);
-                  accr += c.getred();
-                  accg += c.getgreen();
-                  accb += c.getblue();
-              }
-          }
+Colour blur_single(int x, int y, Picture *pic)
+{
+    Colour thisc = pic->getpixel(x, y);
+    if (x != 0 && y != 0 && y < pic->getheight() - 1 && x < pic->getwidth() - 1)
+    {
+        int accr = 0;
+        int accg = 0;
+        int accb = 0;
+        for (int i = -1; i < 2; i++)
+        {
+            for (int j = -1; j < 2; j++)
+            {
+                Colour c = pic->getpixel(x + i, y + j);
+                accr += c.getred();
+                accg += c.getgreen();
+                accb += c.getblue();
+            }
+        }
         thisc.setred(accr / 9);
         thisc.setgreen(accg / 9);
         thisc.setblue(accb / 9);
-      }
-      return thisc;
-  }
+    }
+    return thisc;
+}
 
-  void PicLibrary::blur(string filename){
-      
-      //cout<<"###blur " << filename << endl;
-      general(SECTOR4,filename, &blur_single, false, true);
-      //cout<<"###blur " << filename << "finished" << endl;
-  }
+void PicLibrary::blur(string filename)
+{
+    general(SECTOR4, filename, &blur_single, false, true);
+}
