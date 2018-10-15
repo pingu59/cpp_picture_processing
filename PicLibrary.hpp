@@ -6,7 +6,15 @@
 #include <mutex>
 #include <thread>
 
-class PicLock
+/*The synchronization strategy I used here is Optimistic Locking.
+  1. find the Position to alter without locking anything
+  2. Lock the Position
+  3. Validate it (see if the position can be visited from head)
+    3.1 If invalid, goto 1
+    3.2 If valid, make change with it
+*/
+
+class PicLock /*Stores the picture, its name and a lock*/
 {
 public:
   Picture *pic;
@@ -15,7 +23,7 @@ public:
   string name;
 };
 
-enum concurrency_type
+enum concurrency_type /*Types of concurrent transformation*/
 {
   ROW,
   COLUMN,
@@ -26,7 +34,7 @@ enum concurrency_type
   PIXEL
 };
 
-class Position
+class Position /*Required by Optimistic locking*/
 {
 public:
   PicLock *curr;
@@ -37,23 +45,47 @@ class PicLibrary
 {
 
 private:
-  // TODO: define internal picture storage
+  //internal picture storage
   PicLock *head;
   PicLock *tail;
 
 public:
   // defaiult constructor/deconstructor
-  PicLibrary(){};
-  ~PicLibrary(){};
+  PicLibrary()
+  {
+    head = new PicLock();
+    tail = new PicLock();
+
+    head->m = new std::mutex();
+    tail->m = new std::mutex();
+
+    head->name = "\n";
+    tail->name = "\n"; //implicitly set to this since there will never be name like this
+    head->next = tail;
+  };
+  ~PicLibrary()
+  {
+    PicLock *curr = head->next;
+    while (curr->name != "\n")
+    {
+      unloadpicture(curr->name);
+      curr = head->next;
+    }
+    delete (head->m);
+    delete (tail->m);
+    delete (head->pic);
+    delete (tail->pic);
+    delete (head);
+    delete (tail);
+  };
 
   Position find(string filename);
   void general(enum concurrency_type, string filename, Colour (*func)(int, int, Picture *), bool shape,
-               bool crosspixel);
+               bool crosspixel); //of transformation
   void general_helper(concurrency_type type, Picture *pic, Colour (*func)(int, int, Picture *), bool shape,
                       bool crosspixel);
+  void general_libfunc(bool (*func)(PicLock *, PicLock *, string, string), string path, string filename);
   bool valid(PicLock *pred, PicLock *curr);
-  void init();
-  void terminate();
 
   // command-line interpreter routines
   void print_picturestore();

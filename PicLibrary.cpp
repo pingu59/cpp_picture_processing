@@ -6,7 +6,7 @@
 #define MAX_COLOUR 255
 
 static Utils u = Utils();
-
+/* functions for transformation */
 Colour invert_single(int x, int y, Picture *pic);
 Colour grayscale_single(int x, int y, Picture *pic);
 Colour FlipV_single(int x, int y, Picture *pic);
@@ -15,6 +15,8 @@ Colour blur_single(int x, int y, Picture *pic);
 Colour rotate90_single(int x, int y, Picture *pic);
 Colour rotate180_single(int x, int y, Picture *pic);
 Colour rotate270_single(int x, int y, Picture *pic);
+
+/* function of different procesing methods */
 static void row_thread_func(Picture ptemp, int i, int w, Picture *pic, Colour (*func)(int, int, Picture *),
                             bool crosspixel, bool shape);
 static void pixel_thread_func(Picture ptemp, int i, int j, Picture *pic, Colour (*func)(int, int, Picture *),
@@ -23,8 +25,14 @@ static void column_thread_func(Picture ptemp, int i, int h, Picture *pic, Colour
                                bool crosspixel, bool shape);
 static void sector_thread_func(Picture ptemp, int left, int right, int up, int down, Picture *pic, Colour (*func)(int, int, Picture *),
                                bool crosspixel, bool shape);
-static void sequential(Picture ptemp,int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+static void sequential(Picture ptemp, int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
                        bool crosspixel, bool shape);
+
+/* functions for managing the library */
+static bool load_helper(PicLock *pred, PicLock *curr, string path, string filename);
+static bool unload_helper(PicLock *pred, PicLock *curr, string path, string filename);
+static bool save_helper(PicLock *pred, PicLock *curr, string path, string filename);
+static bool display_helper(PicLock *pred, PicLock *curr, string path, string filename);
 
 Position PicLibrary::find(string filename)
 {
@@ -47,27 +55,40 @@ Position PicLibrary::find(string filename)
     return p;
 }
 
-void PicLibrary::init()
+void PicLibrary::general_libfunc(bool (*func)(PicLock *, PicLock *, string, string), string path, string filename)
 {
-    head = new PicLock();
-    tail = new PicLock();
-
-    head->m = new std::mutex();
-    tail->m = new std::mutex();
-
-    head->name = "\n";
-    tail->name = "\n"; //implicitly set to this since there will never be name as this
-    head->next = tail;
+    bool ndone = true;
+    while (ndone)
+    {
+        bool unlock = false;
+        Position p = find(filename);
+        p.pred->m->lock();
+        p.curr->m->lock();
+        if (valid(p.pred, p.curr))
+        {
+            unlock = func(p.pred, p.curr, path, filename);
+            ndone = false;
+        }
+        if (unlock)
+        {
+            p.pred->m->unlock();
+            p.curr->m->unlock();
+        }
+    }
 }
 
-void PicLibrary::terminate()
+bool PicLibrary::valid(PicLock *pred, PicLock *curr)
 {
-    delete (head->m);
-    delete (tail->m);
-    delete (head->pic);
-    delete (tail->pic);
-    delete (head);
-    delete (tail);
+    PicLock *pl = head;
+    while (pl->name <= pred->name)
+    {
+        if (pl->name == pred->name)
+        {
+            return pl->next->name == curr->name;
+        }
+        pl = pl->next;
+    }
+    return false;
 }
 
 void PicLibrary::print_picturestore()
@@ -88,144 +109,96 @@ void PicLibrary::print_picturestore()
     curr->m->unlock();
 }
 
-bool PicLibrary::valid(PicLock *pred, PicLock *curr)
+static bool load_helper(PicLock *pred, PicLock *curr, string path, string filename)
 {
-    PicLock *pl = head;
-    while (pl->name <= pred->name)
+    if (curr->name == filename)
     {
-        if (pl->name == pred->name)
-        {
-            return pl->next->name == curr->name;
-        }
-        pl = pl->next;
+        cerr << "FAILED : Picture of the same name already exists." << endl;
     }
-    return false;
+    else
+    {
+        Picture *pic = new Picture(path);
+        if (!pic->getimage().empty())
+        {
+            PicLock *pl = new PicLock();
+            pl->next = curr;
+            pl->m = new std::mutex();
+            pl->name = filename;
+            pl->pic = pic;
+            pred->next = pl;
+        }
+        else
+        {
+            delete (pic);
+        }
+    }
+    return true;
 }
 
 void PicLibrary::loadpicture(string path, string filename)
 {
-    bool ndone = true;
-    while (ndone)
+    general_libfunc(load_helper, path, filename);
+}
+
+static bool unload_helper(PicLock *pred, PicLock *curr, string path, string filename)
+{
+    if (curr->name == filename)
     {
-        Position p = find(filename);
-        p.pred->m->lock();
-        p.curr->m->lock();
-        if (valid(p.pred, p.curr))
-        {
-            if (p.curr->name == filename)
-            {
-                p.pred->m->unlock();
-                p.curr->m->unlock();
-                cerr << "FAILED : Picture of the same name already exists.\n";
-                return;
-            }
-            Picture *pic = new Picture(path);
-            if (!pic->getimage().empty())
-            {
-                PicLock *pl = new PicLock();
-                pl->next = p.curr;
-                pl->m = new std::mutex();
-                pl->name = filename;
-                pl->pic = pic;
-                p.pred->next = pl;
-            }
-            ndone = false;
-        }
-        p.pred->m->unlock();
-        p.curr->m->unlock();
+        pred->next = curr->next;
+        delete (curr->pic);
+        curr->m->unlock();
+        delete (curr->m);
+        delete (curr);
+        pred->m->unlock();
+        usleep(1);
+        return false;
+    }
+    else
+    {
+        cerr << "FAILED : Picture not found." << endl;
+        return true;
     }
 }
 
 void PicLibrary::unloadpicture(string filename)
 {
-    bool ndone = true;
-    while (ndone)
+    general_libfunc(unload_helper, "Not used", filename);
+}
+
+static bool save_helper(PicLock *pred, PicLock *curr, string path, string filename)
+{
+    if (curr->name == filename)
     {
-        Position p = find(filename);
-        p.pred->m->lock();
-        p.curr->m->lock();
-        if (valid(p.pred, p.curr))
-        {
-            if (p.curr->name == filename)
-            {
-                p.pred->next = p.curr->next;
-                delete (p.curr->pic);
-                p.curr->m->unlock();
-                delete (p.curr->m);
-                delete (p.curr);
-                p.pred->m->unlock();
-                usleep(1);
-                return;
-            }
-            else
-            {
-                p.pred->m->unlock();
-                p.curr->m->unlock();
-                cerr << "FAILED : Picture not found.\n";
-                return;
-            }
-            ndone = false;
-        }
-        p.pred->m->unlock();
-        p.curr->m->unlock();
+        u.saveimage(curr->pic->getimage(), path);
     }
+    else
+    {
+        cerr << "FAILED : Picture not found." << endl;
+    }
+    return true;
 }
 
 void PicLibrary::savepicture(string filename, string path)
 {
-    bool ndone = true;
-    while (ndone)
+    general_libfunc(save_helper, path, filename);
+}
+
+static bool display_helper(PicLock *pred, PicLock *curr, string path, string filename)
+{
+    if (curr->name == filename)
     {
-        Position p = find(filename);
-        p.pred->m->lock();
-        p.curr->m->lock();
-        if (valid(p.pred, p.curr))
-        {
-            if (p.curr->name == filename)
-            {
-                u.saveimage(p.curr->pic->getimage(), path);
-            }
-            else
-            {
-                p.pred->m->unlock();
-                p.curr->m->unlock();
-                cerr << "FAILED : Picture not found.\n";
-                return;
-            }
-            ndone = false;
-        }
-        p.pred->m->unlock();
-        p.curr->m->unlock();
+        u.displayimage(curr->pic->getimage());
     }
+    else
+    {
+        cerr << "FAILED : Picture not found." << endl;
+    }
+    return true;
 }
 
 void PicLibrary::display(string filename)
 {
-
-    bool ndone = true;
-    while (ndone)
-    {
-        Position p = find(filename);
-        p.pred->m->lock();
-        p.curr->m->lock();
-        if (valid(p.pred, p.curr))
-        {
-            if (p.curr->name == filename)
-            {
-                u.displayimage(p.curr->pic->getimage());
-            }
-            else
-            {
-                p.pred->m->unlock();
-                p.curr->m->unlock();
-                cerr << "FAILED : Picture not found.\n";
-                return;
-            }
-            ndone = false;
-        }
-        p.pred->m->unlock();
-        p.curr->m->unlock();
-    }
+    general_libfunc(display_helper, "Not used", filename);
 }
 
 Colour invert_single(int x, int y, Picture *pic)
@@ -240,6 +213,7 @@ Colour invert_single(int x, int y, Picture *pic)
 void PicLibrary::general_helper(concurrency_type type, Picture *pic, Colour (*func)(int, int, Picture *), bool shape,
                                 bool crosspixel)
 {
+    /*check if there is a need to create a new picture or change the shape of the picture */
     Picture ptemp;
     int w = pic->getwidth();
     int h = pic->getheight();
@@ -254,6 +228,8 @@ void PicLibrary::general_helper(concurrency_type type, Picture *pic, Colour (*fu
             ptemp = Picture(w, h);
         }
     }
+
+    /*find the suitable way to do concurrency accroding to parameter type.*/
     switch (type)
     {
     case ROW:
@@ -345,7 +321,7 @@ void PicLibrary::general_helper(concurrency_type type, Picture *pic, Colour (*fu
     }
     break;
     default: //sequentially
-        sequential(ptemp,w, h, pic, func, crosspixel, shape);
+        sequential(ptemp, w, h, pic, func, crosspixel, shape);
         break;
     }
 
@@ -389,18 +365,18 @@ void PicLibrary::general(concurrency_type type, string filename, Colour (*func)(
         {
             if (p.curr->name == filename)
             {
-                struct timespec * tp = (struct timespec *)malloc(sizeof(struct timespec));
-                clock_gettime(CLOCK_MONOTONIC, tp);
+                /*To test the time duration of processing the picture*/
+                // struct timespec *tp = (struct timespec *)malloc(sizeof(struct timespec));
+                // clock_gettime(CLOCK_MONOTONIC, tp);
 
                 general_helper(type, p.curr->pic, func, shape, crosspixel);
 
-                struct timespec * tp2 = (struct timespec *)malloc(sizeof(struct timespec));
-                clock_gettime(CLOCK_MONOTONIC, tp2);
-                long long difference = (tp2 -> tv_sec * 1000000000 + tp2 -> tv_nsec) 
-                                        - (tp -> tv_sec * 1000000000 + tp -> tv_nsec);
-                cout << "Execution time is: " << difference << endl;
-                free(tp);
-                free(tp2);
+                // struct timespec *tp2 = (struct timespec *)malloc(sizeof(struct timespec));
+                // clock_gettime(CLOCK_MONOTONIC, tp2);
+                // long long difference = (tp2->tv_sec * 1000000000 + tp2->tv_nsec) - (tp->tv_sec * 1000000000 + tp->tv_nsec);
+                // cout << "Execution time is: " << difference << endl;
+                // free(tp);
+                // free(tp2);
             }
             else
             {
@@ -415,7 +391,7 @@ void PicLibrary::general(concurrency_type type, string filename, Colour (*func)(
         p.curr->m->unlock();
     }
 }
-static void sequential(Picture ptemp,int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
+static void sequential(Picture ptemp, int w, int h, Picture *pic, Colour (*func)(int, int, Picture *),
                        bool crosspixel, bool shape)
 {
     if (!crosspixel)
@@ -651,5 +627,7 @@ Colour blur_single(int x, int y, Picture *pic)
 
 void PicLibrary::blur(string filename)
 {
+    /*Change the enum concurrency_type here to swich between different concurrency ways to blur.
+      Also works for other transformation functions.*/
     general(SECTOR4, filename, &blur_single, false, true);
 }
