@@ -14,7 +14,6 @@ static list<thread *> tl;
 
 int main(int argc, char **argv)
 {
-  //pl->init();
   configure(argc, argv);
 
   string c1, c2, c3;
@@ -24,7 +23,8 @@ int main(int argc, char **argv)
   {
     std::thread *th;
     cout << ">>";
-    if(cin.eof()){
+    if (cin.eof())
+    {
       break;
     }
     cin >> c1;
@@ -71,7 +71,7 @@ int main(int argc, char **argv)
           no_th = true;
           th = new thread(&PicLibrary::savepicture, pl, c2, c3);
           th->join();
-          delete(th);
+          delete (th);
         }
         else if (c1 == "rotate")
         {
@@ -86,7 +86,7 @@ int main(int argc, char **argv)
           no_th = true;
           th = new thread(&PicLibrary::loadpicture, pl, c2, c3);
           th->join();
-          delete(th);
+          delete (th);
         }
         else
         {
@@ -109,7 +109,6 @@ int main(int argc, char **argv)
     delete (t);
   }
 
-  //pl->terminate();
   delete (pl);
   return 0;
 }
